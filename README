@@ -1,8 +1,20 @@
 =============================================================================
 	   ADVANTECH industrial comunication cards device driver
 			 Installation Guide
-		    for Linux Kernel 2.4.x,2.6.x,3.x,4.x,5.x
+		    for Linux Kernel 2.4.x,2.6.x,3.x,4.x,5.x,6.x
 	   Copyright (C) 2021, Advantech eAutomation Division.
+=============================================================================
+
+DISCLAIMER
+=============================================================================
+The kernel 6.x port (version 3.42.10, directory ecu-p1618d-driver/) is an
+UNOFFICIAL community modification and is NOT provided, endorsed, or supported
+by Advantech Co., Ltd. in any way. It is provided as-is, with no warranty of
+any kind — use at your own risk. For official support please contact Advantech.
+
+The original Advantech driver (versions up to 3.42.9) supports Linux kernels
+2.4.x through 5.x and is unmodified in the 2.4/, 2.6/, and above_3.0/
+directories.
 =============================================================================
 
 This README file describes the HOW-TOs of driver installation.
@@ -167,7 +179,25 @@ version 3.42.8 <2020-03-18>
       - Fix bug：Kernel 4.15.0-45, implicit declaration of function irqd_is_wakeup_set;
 version 3.42.9 <2021-04-19>
       - Fix bug：Ubuntu20.04( Kernel 5.8.0-50 );
-	  
+
+version 3.42.10 <2026-03-28>
+      - Port to Linux kernel 6.x (tested on Debian 12, kernel 6.1.0-43-amd64);
+      - Fix set_termios callback signature: old parameter now const struct ktermios *
+        (kernel 5.12 API change);
+      - Replace ASYNCB_*/ASYNC_* internal flags with tty_port iflags API
+        (ASYNCB_CTS_FLOW, ASYNCB_CHECK_CD, ASYNC_INITIALIZED, ASYNC_NORMAL_ACTIVE,
+        ASYNC_SUSPENDED hidden from kernel code since kernel 5.12);
+      - Fix tty->stopped -> tty->flow.stopped (kernel 5.14);
+      - Fix uart_port.timeout removed, use uart_fifo_timeout() (kernel 5.14);
+      - Fix tty_port.low_latency removed (kernel 5.12);
+      - Fix current->state -> __set_current_state() (kernel 5.14);
+      - Fix write_room/chars_in_buffer return type int -> unsigned int (kernel 5.15);
+      - Fix alloc_tty_driver -> tty_alloc_driver, put_tty_driver ->
+        tty_driver_kref_put (kernel 5.15);
+      - Fix PDE_DATA() removed, guard uart_proc_open/uart_proc_fops for
+        kernel < 4.17 only (kernel 6.0);
+      - Working copy of above_3.0 with 6.x fixes located in ecu-p1618d-driver/;
+
 2. Test environment
 
    +--------------------------+-------------------------+
@@ -207,8 +237,9 @@ version 3.42.9 <2021-04-19>
    |	Ubuntu 10.04          |  2.6.32-21-generic      |
    |	Ubuntu 12.04          |  3.0.2-23-generic-pae   |
    |	Ubuntu 12.10          |  3.5.0-17-generic       |
-   |	Ubuntu 20.04          |  5.4.0-26-generic       |   
+   |	Ubuntu 20.04          |  5.4.0-26-generic       |
    |	Ubuntu 20.04          |  5.8.0-50-generic       |
+   |	Debian 12             |  6.1.0-44-generic       |
    +--------------------------+-------------------------+
 
 3. Installation
@@ -225,10 +256,13 @@ version 3.42.9 <2021-04-19>
    b. Build driver for 2.6 kernel
       # cd adv950_vM_NN/2.6
       # make
-   c. Build driver for 3.X kernel
-      # cd adv950_vM_NN/3.X
+   c. Build driver for 3.X - 5.X kernel
+      # cd adv950_vM_NN/above_3.0
       # make
-   Note: 
+   d. Build driver for 6.X kernel (Debian 12 / Ubuntu 22.04+)
+      # cd adv950_vM_NN/ecu-p1618d-driver
+      # make
+   Note:
       To compile the source code, you must install kernel development header file package,"gcc" and "make" command.
       In 2.4 kernel version, you should use "ln" command to make a link named "linux-2.4" in /usr/src/, it link to you kernel development header installed folder.
 

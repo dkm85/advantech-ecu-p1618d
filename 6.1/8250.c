@@ -3060,7 +3060,7 @@ static int serialexar_setRS485(struct uart_port *port, int turnOn, int turnaroun
 
 void
 adv_serial8250_do_set_termios(struct uart_port *port, struct ktermios *termios,
-		          struct ktermios *old)
+		          const struct ktermios *old)
 {
 	struct uart_8250_port *up =
 		container_of(port, struct uart_8250_port, port);
@@ -3432,7 +3432,7 @@ adv_serial8250_do_set_termios(struct uart_port *port, struct ktermios *termios,
 
 static void
 serial8250_set_termios(struct uart_port *port, struct ktermios *termios,
-		       struct ktermios *old)
+		       const struct ktermios *old)
 {
 	if (port->set_termios)
 		port->set_termios(port, termios, old);

@@ -73,7 +73,7 @@ static struct lock_class_key port_lock_key;
 #endif
 
 static void uart_change_speed(struct tty_struct *tty, struct uart_state *state,
-					struct ktermios *old_termios);
+					const struct ktermios *old_termios);
 static void uart_wait_until_sent(struct tty_struct *tty, int timeout);
 static void uart_change_pm(struct uart_state *state,  int pm_state);
 static void uart_port_shutdown(struct tty_port *port);
@@ -114,7 +114,11 @@ static void __uart_start(struct tty_struct *tty)
 	struct uart_port *port = state->uart_port;
 
 	if (!uart_circ_empty(&state->xmit) && state->xmit.buf &&
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+	    !tty->flow.stopped && !tty->hw_stopped)
+#else
 	    !tty->stopped && !tty->hw_stopped)
+#endif
 		port->ops->start_tx(port);
 }
 
@@ -231,7 +235,11 @@ static int uart_port_startup(struct tty_struct *tty, struct uart_state *state,
 				uart_set_mctrl(uport, TIOCM_RTS | TIOCM_DTR);
 		}
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+		if (tty_port_cts_enabled(port)) {
+#else
 		if (port->flags & ASYNC_CTS_FLOW) {
+#endif
 			spin_lock_irq(&uport->lock);
 			if (!(uport->ops->get_mctrl(uport) & TIOCM_CTS))
 				tty->hw_stopped = 1;
@@ -391,7 +399,11 @@ adv_uart_update_timeout(struct uart_port *port, unsigned int cflag,
 	 * Figure the timeout to send the above number of bits.
 	 * Add .02 seconds of slop
 	 */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+	uart_update_timeout(port, cflag, baud);
+#else
 	port->timeout = (HZ * bits) / baud + HZ/50;
+#endif
 }
 
 EXPORT_SYMBOL(adv_uart_update_timeout);
@@ -514,7 +526,7 @@ adv_uart_get_divisor(struct uart_port *port, unsigned int baud)
 
 /* FIXME: Consistent locking policy */
 static void uart_change_speed(struct tty_struct *tty, struct uart_state *state,
-					struct ktermios *old_termios)
+					const struct ktermios *old_termios)
 {
 	struct tty_port *port = &state->port;
 	struct uart_port *uport = state->uart_port;
@@ -537,6 +549,10 @@ static void uart_change_speed(struct tty_struct *tty, struct uart_state *state,
 	/*
 	 * Set flags based on termios cflag
 	 */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+	tty_port_set_cts_flow(port, termios->c_cflag & CRTSCTS);
+	tty_port_set_check_carrier(port, !(termios->c_cflag & CLOCAL));
+#else
 	if (termios->c_cflag & CRTSCTS)
 		set_bit(ASYNCB_CTS_FLOW, &port->flags);
 	else
@@ -546,6 +562,7 @@ static void uart_change_speed(struct tty_struct *tty, struct uart_state *state,
 		clear_bit(ASYNCB_CHECK_CD, &port->flags);
 	else
 		set_bit(ASYNCB_CHECK_CD, &port->flags);
+#endif
 
 	uport->ops->set_termios(uport, termios, old_termios);
 }
@@ -624,6 +641,31 @@ static int uart_write(struct tty_struct *tty,
 	return ret;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
+static unsigned int uart_write_room(struct tty_struct *tty)
+{
+	struct uart_state *state = tty->driver_data;
+	unsigned long flags;
+	unsigned int ret;
+
+	spin_lock_irqsave(&state->uart_port->lock, flags);
+	ret = uart_circ_chars_free(&state->xmit);
+	spin_unlock_irqrestore(&state->uart_port->lock, flags);
+	return ret;
+}
+
+static unsigned int uart_chars_in_buffer(struct tty_struct *tty)
+{
+	struct uart_state *state = tty->driver_data;
+	unsigned long flags;
+	unsigned int ret;
+
+	spin_lock_irqsave(&state->uart_port->lock, flags);
+	ret = uart_circ_chars_pending(&state->xmit);
+	spin_unlock_irqrestore(&state->uart_port->lock, flags);
+	return ret;
+}
+#else
 static int uart_write_room(struct tty_struct *tty)
 {
 	struct uart_state *state = tty->driver_data;
@@ -647,6 +689,7 @@ static int uart_chars_in_buffer(struct tty_struct *tty)
 	spin_unlock_irqrestore(&state->uart_port->lock, flags);
 	return ret;
 }
+#endif
 
 static void uart_flush_buffer(struct tty_struct *tty)
 {
@@ -1008,19 +1051,26 @@ static int uart_set_info(struct tty_struct *tty,
 	port->closing_wait    = closing_wait;
 	if (new_serial->xmit_fifo_size)
 		uport->fifosize = new_serial->xmit_fifo_size;
-	if (port->tty)
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0)
+	if (port->tty) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+		/* low_latency removed in 5.12, no-op */
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0)
 		port->low_latency = (uport->flags & UPF_LOW_LATENCY) ? 1 : 0;
 #else
 		port->tty->low_latency =
 			(uport->flags & UPF_LOW_LATENCY) ? 1 : 0;
 #endif
+	}
 
  check_and_exit:
 	retval = 0;
 	if (uport->type == PORT_UNKNOWN)
 		goto exit;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+	if (tty_port_initialized(port)) {
+#else
 	if (port->flags & ASYNC_INITIALIZED) {
+#endif
 		if (((old_flags ^ uport->flags) & UPF_SPD_MASK) ||
 		    old_custom_divisor != uport->custom_divisor) {
 			/*
@@ -1096,7 +1146,11 @@ static int uart_get_lsr_info(struct tty_struct *tty,
 	 */
 	if (uport->x_char ||
 	    ((uart_circ_chars_pending(&state->xmit) > 0) &&
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+	     !tty->flow.stopped && !tty->hw_stopped))
+#else
 	     !tty->stopped && !tty->hw_stopped))
+#endif
 		result &= ~TIOCSER_TEMT;
 
 	return put_user(result, value);
@@ -1254,7 +1308,7 @@ uart_wait_modem_status(struct uart_state *state, unsigned long arg)
 		cprev = cnow;
 	}
 
-	current->state = TASK_RUNNING;
+	__set_current_state(TASK_RUNNING);
 	remove_wait_queue(&port->delta_msr_wait, &wait);
 
 	return ret;
@@ -1402,7 +1456,7 @@ static void uart_set_ldisc(struct tty_struct *tty)
 }
 
 static void uart_set_termios(struct tty_struct *tty,
-						struct ktermios *old_termios)
+						const struct ktermios *old_termios)
 {
 	struct uart_state *state = tty->driver_data;
 	unsigned long flags;
@@ -1634,6 +1688,20 @@ static void uart_wait_until_sent(struct tty_struct *tty, int timeout)
 	 * Note: we have to use pretty tight timings here to satisfy
 	 * the NIST-PCTS.
 	 */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+	{
+		unsigned long fifo_timeout = uart_fifo_timeout(port);
+		char_time = (fifo_timeout > HZ/50) ?
+			(fifo_timeout - HZ/50) / port->fifosize : 1;
+		char_time = char_time / 5;
+		if (char_time == 0)
+			char_time = 1;
+		if (timeout && timeout < char_time)
+			char_time = timeout;
+		if (timeout == 0 || timeout > 2 * fifo_timeout)
+			timeout = 2 * fifo_timeout;
+	}
+#else
 	char_time = (port->timeout - HZ/50) / port->fifosize;
 	char_time = char_time / 5;
 	if (char_time == 0)
@@ -1652,6 +1720,7 @@ static void uart_wait_until_sent(struct tty_struct *tty, int timeout)
 	 */
 	if (timeout == 0 || timeout > 2 * port->timeout)
 		timeout = 2 * port->timeout;
+#endif
 
 	expire = jiffies + timeout;
 
@@ -1687,12 +1756,20 @@ static void uart_hangup(struct tty_struct *tty)
 	pr_debug("uart_hangup(%d)\n", state->uart_port->line);
 
 	mutex_lock(&port->mutex);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+	if (tty_port_active(port)) {
+#else
 	if (port->flags & ASYNC_NORMAL_ACTIVE) {
+#endif
 		uart_flush_buffer(tty);
 		uart_shutdown(tty, state);
 		spin_lock_irqsave(&port->lock, flags);
 		port->count = 0;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+		tty_port_set_active(port, false);
+#else
 		clear_bit(ASYNCB_NORMAL_ACTIVE, &port->flags);
+#endif
 		spin_unlock_irqrestore(&port->lock, flags);
 		tty_port_tty_set(port, NULL);
 		wake_up_interruptible(&port->open_wait);
@@ -1712,7 +1789,9 @@ static int uart_port_activate(struct tty_port *port, struct tty_struct *tty)
 	if (!uport || uport->flags & UPF_DEAD)
 		return -ENXIO;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
 	port->low_latency = (uport->flags & UPF_LOW_LATENCY) ? 1 : 0;
+#endif
 
 	/*
 	 * Start up the serial port.
@@ -1996,6 +2075,7 @@ static int uart_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 17, 0)
 static int uart_proc_open(struct inode *inode, struct file *file)
 {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 10, 0)
@@ -2012,7 +2092,8 @@ static const struct file_operations uart_proc_fops = {
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
-#endif
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(4, 17, 0) */
+#endif /* CONFIG_PROC_FS */
 
 #if defined(CONFIG_SERIAL_CORE_CONSOLE) || defined(CONFIG_CONSOLE_POLL)
 /*
@@ -2152,7 +2233,7 @@ adv_uart_set_options(struct uart_port *port, struct console *co,
 	switch (parity) {
 	case 'o': case 'O':
 		termios.c_cflag |= PARODD;
-		/*fall through*/
+		fallthrough;
 	case 'e': case 'E':
 		termios.c_cflag |= PARENB;
 		break;
@@ -2242,13 +2323,22 @@ int adv_uart_suspend_port(struct uart_driver *drv, struct uart_port *uport)
 	if (console_suspend_enabled || !uart_console(uport))
 		uport->suspended = 1;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+	if (tty_port_initialized(port)) {
+#else
 	if (port->flags & ASYNC_INITIALIZED) {
+#endif
 		const struct uart_ops *ops = uport->ops;
 		int tries;
 
 		if (console_suspend_enabled || !uart_console(uport)) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+			tty_port_set_suspended(port, true);
+			tty_port_set_initialized(port, false);
+#else
 			set_bit(ASYNCB_SUSPENDED, &port->flags);
 			clear_bit(ASYNCB_INITIALIZED, &port->flags);
+#endif
 
 			spin_lock_irq(&uport->lock);
 			ops->stop_tx(uport);
@@ -2351,7 +2441,11 @@ int adv_uart_resume_port(struct uart_driver *drv, struct uart_port *uport)
 			console_start(uport->cons);
 	}
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+	if (tty_port_suspended(port)) {
+#else
 	if (port->flags & ASYNC_SUSPENDED) {
+#endif
 		const struct uart_ops *ops = uport->ops;
 		int ret;
 
@@ -2370,7 +2464,11 @@ int adv_uart_resume_port(struct uart_driver *drv, struct uart_port *uport)
 				ops->set_mctrl(uport, uport->mctrl);
 				ops->start_tx(uport);
 				spin_unlock_irq(&uport->lock);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+				tty_port_set_initialized(port, true);
+#else
 				set_bit(ASYNCB_INITIALIZED, &port->flags);
+#endif
 			} else {
 				/*
 				 * Failed to resume - maybe hardware went away?
@@ -2381,7 +2479,11 @@ int adv_uart_resume_port(struct uart_driver *drv, struct uart_port *uport)
 			}
 		}
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+		tty_port_set_suspended(port, false);
+#else
 		clear_bit(ASYNCB_SUSPENDED, &port->flags);
+#endif
 	}
 
 	mutex_unlock(&port->mutex);
@@ -2611,7 +2713,11 @@ int adv_uart_register_driver(struct uart_driver *drv)
 	if (!drv->state)
 		goto out;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
+	normal = tty_alloc_driver(drv->nr, 0);
+#else
 	normal = alloc_tty_driver(drv->nr);
+#endif
 	if (!normal)
 		goto out_kfree;
 
@@ -2655,7 +2761,7 @@ int adv_uart_register_driver(struct uart_driver *drv)
 	for (i = 0; i < drv->nr; i++)
 		tty_port_destroy(&drv->state[i].port);
 #endif
-	put_tty_driver(normal);
+	tty_driver_kref_put(normal);
 out_kfree:
 	kfree(drv->state);
 out:
@@ -2679,7 +2785,7 @@ void adv_uart_unregister_driver(struct uart_driver *drv)
 #endif
 
 	tty_unregister_driver(p);
-	put_tty_driver(p);
+	tty_driver_kref_put(p);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
 	for (i = 0; i < drv->nr; i++)
 		tty_port_destroy(&drv->state[i].port);
@@ -3065,7 +3171,11 @@ void adv_uart_handle_dcd_change(struct uart_port *uport, unsigned int status)
 
 	uport->icount.dcd++;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+	if (tty_port_check_carrier(port)) {
+#else
 	if (port->flags & ASYNC_CHECK_CD) {
+#endif
 		if (status)
 			wake_up_interruptible(&port->open_wait);
 		else if (tty)
@@ -3116,7 +3226,11 @@ void adv_uart_handle_cts_change(struct uart_port *uport, unsigned int status)
 
 	uport->icount.cts++;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
+	if (tty_port_cts_enabled(port)) {
+#else
 	if (port->flags & ASYNC_CTS_FLOW) {
+#endif
 		if (tty->hw_stopped) {
 			if (status) {
 				tty->hw_stopped = 0;
