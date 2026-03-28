@@ -1,0 +1,27 @@
+# Kernel module build artifacts
+*.ko
+*.o
+*.mod
+*.mod.c
+*.mod.o
+*.symvers
+*.order
+*.markers
+
+# kbuild command files
+.*.cmd
+
+# kbuild temporary directories
+.tmp_versions/
+.cache.mk
+
+# Backup files
+*~
+
+# getconfig build artifacts
+getconfig/getconfig
+
+# IDE / editor files
+.vscode/
+*.swp
+*.swo
