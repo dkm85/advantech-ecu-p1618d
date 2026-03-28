@@ -1,0 +1,259 @@
+=============================================================================
+	   ADVANTECH industrial comunication cards device driver
+			 Installation Guide
+		    for Linux Kernel 2.4.x,2.6.x,3.x,4.x,5.x
+	   Copyright (C) 2021, Advantech eAutomation Division.
+=============================================================================
+
+This README file describes the HOW-TOs of driver installation.
+
+1. Change Logs
+
+Version 3.00 <2004-11-29> 
+	- Moved code from 2.4.x
+Version 3.01 <2004-12-02> 
+	- Fixed UNO-2050 function 1 offset typing error
+Version 3.02 <2004-12-03> 
+	- Support FC3
+Version 3.03 <2004-12-15> 
+	- Support UART types can be specified by each port to support
+	  some kind of devices did not fully implement with auto detection
+Version 3.04 <2004-12-30> 
+	- Support serial port ioctl TIOCGSERIAL to get serial port jumper
+	  setting and store at reserved_char[0]. If value is zero, that
+	  means jumper switch to RS232. Otherwise, it would be RS422/485.
+
+          struct serial_struct serinfo;
+          // get serial port information
+          serinfo.reserved_char[0] = 0;
+          if (ioctl(fd, TIOCGSERIAL, &serinfo) < 0) {
+              perror("Cannot get serial info");
+              close(fd);
+              return;
+          }
+
+          // get serial port type configuration
+          if (serinfo.reserved_char[0] == 0)
+          {
+              // RS232
+          }
+          else
+          {
+              // RS422/485
+          }
+Version 3.05 <2005-2-17> 
+        - Porting serial driver to 2.4 kernel
+        - Enhance 2.4 and 2.6 serial drivers, Makefile and script file
+Version 3.06 <2005-4-25>
+	- Remove the folder of 'pclterm' from the package
+	- Test in SuSE 9.2, Mandrake 10.1 and Debian 3.0r2
+Version 3.07 <2005-5-31>
+	- Add ICOM cards support
+	  PCI-1601A/B/AU/BU, PCI-1602A/B/AU/BU/UP,
+	  PCI-1603, PCI-1604UP and PCI-1622CU
+Version 3.08 <2005-6-14>
+	- Correct PCI-952 2nd port start base address(BAR1)
+Version 3.09 <2005-6-22>
+	- Fix 2.4 driver which did not set auto DTR correctly
+Version 3.10 <2005-6-24>
+	- Add code to setup auto DTR after detection
+Version 3.11 <2005-6-29>
+	- Fix PCI-1622 ports on function 1 detection problem
+Version 3.12 <2005-7-22>
+	- Add support for UNOB-2201CB carrier board
+	- Add MIC-3612 and MIC-3620 to 2.6 pci_serial_quirks table
+	- Change the value of UART_NR to 64 in the driver for 2.6 kernel
+Version 3.13 <2005-8-9>
+	- Fix UNOB-2201CB ports on function 1 detection problem
+Version 3.14 <2005-11-07>
+	- Add support for MIC-3611
+Version 3.15 <2006-2-16>
+	- Add support for Mandriva Linux 2006	
+Version 3.16 <2006-2-16>
+	- Change the SERIAL_NAME to support devfs.
+Version 3.17 <2006-5-24>
+	- Add support for Debian 3.1r0a (kernel version 2.6.8-2-686) 
+Version 3.18 <2006-6-8>
+	- Add support for SuSE LINUX 10.1 and Fedora Core 5 
+Verson  3.19 <2006-11-10>
+	-Add support for UNO-2176
+Version 3.20 <2007-03-06>
+	- Fix bug in low active type for 485 mode(kernel 2.6)
+	- Support Ubuntu 6.06(add UBUNTU_2_6_15) and RedHat Enterprise Server 4(kernel 2.6)
+	- Support quick response(use setserial to change uart type)
+	- Enable 16C950 trigger level and hardware and software flow control
+Version 3.21 <2007-05-21>
+	- Add support for PCM-3614P PCM-3618P PCM-3681P PCM-3641P
+Version 3.22 <2007-09-14>
+	- Support FC6
+Version 3.23 <2007-09-30>
+	- Fix the bug in serial8250_get_mctrl
+Version 3.24 <2007-12-06>
+	- Fix software flow control in 2.4 kernel version for MIC-3612
+Version 3.25 <2007-12-06>
+	- Fix bug about flow control in 2.6 kernel
+	- Fix bug about change_speed in 2.4 kernel
+Version 3.26 <2008-07-07>
+	- to support FC7 and FC8
+	- to support UNO-1150
+	- to support MIC-3621
+	- to support ubuntu 8.04 
+Version 3.27 <2008-10-08>
+	- Source headers comply with GPL
+	- modify the driver readme
+Version 3.28 <2008-12-08>
+      - to support UNO-2679, UNO-4672
+Version 3.29 <2009-06-03>
+      - to support debian 5.0
+      - to support patch CONFIG_PREEMPT_RT in kernel
+      - to support A001 A002 A004 A101 A102 A104 devices
+      - to support F001 F002 F004 F101 F102 F104 deivces
+Version 3.30 <2010-05-06>
+      - to support FC10,FC11,FC12,SUSE 11.2 Madriva 2010
+      - to support Advantech General COM port	 
+Version 3.31 <2010-08-11>
+      - updata to support kernel-2.6.32 and kernel-2.6.33
+      - to support ubuntu 10.04 and Fedora core 13
+Version 3.32 <2010-08-11>
+      - updata to support redhat 7.2
+      - fix bug for general COM port information
+      - add support Fedora 14
+      - fix bug about stty
+Version 3.33 <2011-11-07>
+      - support 2.6.37,2.6.38,2.6.39 and 3.x kernel
+      - support PCIe-1620
+version 3.34 <2012-03-08>
+      - support 2.6.8 kernel of debian 3.1r0a with devfs
+      - support RedHat Enterprise Linux 4.3 (2.6.9-55.EL)
+      - support debian 6.04 with 486 kernel in UNO-2050 ( 2.6.32-5-486)
+version 3.35 <2012-03-26>
+      - support 2.6.36 kernel
+version 3.36 <2012-05-02>
+      - support 2.6.30 kernel for SliTaz 3.0
+      - support A003 device
+      - support PCI-1611 card (Device ID: 1600, subVendorID: 1611)
+      - fix bug for PCIe-1620 DMA
+version 3.37 <2012-11-09>
+      - support 3.2, 3.3, 3.4,3.5 kernel ( test in Ubuntu 12.04, Fedora 17, OpenSUSE 12.2 and Ubuntu 12.10)
+      - Fix bug for PCIe-1620 in 50 baudrate
+version 3.38 <2013-08-09>
+      - support 3.9.x, 3.10.x kernel (3.x, test In Fedora 18, Fedora 19)
+version 3.39 <2014-01-24>
+      - support PCIe-1620 DMA bug in UNO-3084
+version 3.40 <2014-06-12>
+      - support A516 general COM card    
+version 3.41 <2015-03-02>
+      - Add support for PCM-3642P	  
+version 3.42 <2015-05-14>
+      - support 2.6.x kernel for 64bit OS	
+version 3.42.1 <2016-03-18>
+      - support Exar 16C850 in 2.6 and 3.X kernel	
+version 3.42.2 <2016-10-24>
+      - support  EXAR's PCI Family of UARTs (XR17V358/354/352) in 2.6 and 3.X kernel  
+version 3.42.3 <2017-04-20>
+      - For RHEL7.3 (Kernel 3.10.0) remove close_wait. 	   
+version 3.42.4 <2017-07-14>
+      - For XR17V358: Add a parameter to enable/disable internal loopback;
+    	- For XR17V358: Add non-standard baud rates support;
+    	- For XR17V358: Improve Software flow control and Hardware flow control behavior; 	 
+version 3.42.5 <2017-10-18>
+      - Support 4.x;
+version 3.42.6 <2018-12-06>
+      - Fix bug：Kernel 2.6 sometimes get serial mode error for Exar358;
+      - Support to kernel 4.18.9;	  
+version 3.42.7 <2019-04-19>
+      - Fix bug：RHEL6.7 (Kernel 2.6.32) transmit_chars change memcpy to memcpy_toio for Exar358;
+version 3.42.8 <2020-03-18>
+      - Fix bug：Kernel 4.15.0-45, implicit declaration of function irqd_is_wakeup_set;
+version 3.42.9 <2021-04-19>
+      - Fix bug：Ubuntu20.04( Kernel 5.8.0-50 );
+	  
+2. Test environment
+
+   +--------------------------+-------------------------+
+   |	Distribution          |	kernel version          | 
+   +--------------------------+-------------------------+
+   |	Red Hat 7.2           |  2.4.7-10               |  
+   |	Red Hat 9             |  2.4.20-8               |  
+   |	RedHat Enterprise 4   |  2.6.9-34.EL            |
+   |	Redhat Enterprise 5.4 |  2.6.18-164.el5         |
+   |	Redhat Enterprise 6.5 |  2.6.32                 |   
+   |	Redhat Enterprise 6.7 |  2.6.32-573.el6.x86_64  |     
+   |	Redhat Enterprise 7.3 |  3.10.0                 |
+   |	Fedora Core 6         |  2.6.18-1.2798.fc6      | 
+   |	Fedora Core 8         |  2.6.23.1-42.fc8        |
+   |	Fedora Core 9         |  2.6.25-14.fc9          |       
+   |	Fedora Core 10        |  2.6.27.5-117.fc10      |
+   |	Fedora Core 11        |  2.6.29.4-167.fc11      |    
+   |	Fedora Core 12        |  2.6.31.5-127.fc12      | 
+   |	Fedora Core 13        |  2.6.33.3-85.fc13       | 
+   |	Fedora Core 14        |  2.6.35.6-45.fc14       |  
+   |	Fedora Core 15        |  2.6.38/2.6.40          |
+   |	Fedora Core 16        |  3.1.0-7.fc16           | 
+   |	Fedora Core 17        |  3.3.4-5.fc17           | 
+   |	Fedora Core 18        |  3.6.10-4.fc18          |
+   |	Fedora Core 19        |  3.9.5-301.fc19         |      
+   |	SUSE 10.1             |  2.6.16.13-4-default    |       
+   |	SUSE 10.3             |  2.6.22.5-31-default    |      
+   |	SUSE 11.2             |  2.6.31.5-0.1-desktop   |
+   |	SUSE 11.4             |  2.6.37                 |
+   |	OpenSUSE 12.2         |  3.4.6-2.10-desktop     |  
+   |	Mandriva 2010         |  2.6.31.5-desktop-1mnb  |
+   |	Debian 5.0.4          |  2.6.26-2-686           |
+   |	Debian 6.0.2          |  2.6.32                 |    
+   |	Ubuntu 8.04           |  2.6.24-19-generic      | 
+   |	Ubuntu 9.04           |  2.6.28-11-generic      |
+   |	Ubuntu 9.10           |  2.6.31-14-generic      |
+   |	Ubuntu 10.04          |  2.6.32-21-generic      |
+   |	Ubuntu 12.04          |  3.0.2-23-generic-pae   |
+   |	Ubuntu 12.10          |  3.5.0-17-generic       |
+   |	Ubuntu 20.04          |  5.4.0-26-generic       |   
+   |	Ubuntu 20.04          |  5.8.0-50-generic       |
+   +--------------------------+-------------------------+
+
+3. Installation
+
+3.1. Login as 'root' before executing the following instructions.
+
+3.2. Uncompress the driver
+   # tar zxvf adv950_vM_NN.tar.gz
+
+3.3. Build the driver
+   a. Build driver for 2.4 kernel
+      # cd adv950_vM_NN/2.4
+      # make
+   b. Build driver for 2.6 kernel
+      # cd adv950_vM_NN/2.6
+      # make
+   c. Build driver for 3.X kernel
+      # cd adv950_vM_NN/3.X
+      # make
+   Note: 
+      To compile the source code, you must install kernel development header file package,"gcc" and "make" command.
+      In 2.4 kernel version, you should use "ln" command to make a link named "linux-2.4" in /usr/src/, it link to you kernel development header installed folder.
+
+	
+3.4. Install the driver module
+   # make install
+   to see whether ttyAPn ( n = 1,2,3...) exist in /dev/ folder, 
+   if not,please execute the following command, 
+   # make node
+
+3.5. Test driver and get serial port type configuration
+   # make test
+
+3.6. If you want the Linux insert the driver module automaticlly when boot,
+   please follow the steps showing below
+   a. Build driver 
+   b. For 2.4 kernel, add "insmod /path/adv950.o" to
+      boot up shell script.
+	  For 2.6 kernel, add "insmod /path/adv950.ko" to
+      boot up shell script.
+      Here the "path" is adv950.o file location path.
+
+   c. For 2.6 and 3.X kernel, When execute "make insall", the driver will be inserted into kernel automaticlly when boot.
+      If not,please do the same as step b.
+
+3.7. Uninstall the driver module and clean
+   # make uninstall
+   # make clean
